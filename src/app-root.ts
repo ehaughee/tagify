@@ -1,44 +1,26 @@
-import { customElement, property, LitElement, html, css } from 'lit-element';
+import { LitElement, html, css } from 'lit';
+import { property, customElement } from 'lit/decorators.js';
 
 @customElement('app-root')
 export class AppRoot extends LitElement {
-  @property() message = 'Learn LitElement';
-
   static get styles() {
-    return css`
-      h1 {
-        font-size: 4rem;
-      }
-      .wrapper {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        flex-direction: column;
-        height: 100vh;
-        background-color: #2196f3;
-        background: linear-gradient(315deg, #b4d2ea 0%, #2196f3 100%);
-        font-size: 24px;
-      }
-      .link {
-        color: white;
-      }
-    `;
+    return css``;
   }
 
   render() {
     return html`
-      <div class="wrapper">
-        <h1>LitElement + Snowpack</h1>
-        <p>Edit <code>src/app-root.ts</code> and save to reload.</p>
-        <a
-          class="link"
-          href="https://lit-element.polymer-project.org/"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          ${this.message}
-        </a>
-      </div>
+      <p>access_token: "${this.getHashValueByKey('access_token')}"</p>
+      <a href="/login">Login</a>
     `;
+  }
+
+  private getHashValueByKey(key: string) {
+    const hash = window.location.hash;
+    const hashKeyValuePairs = hash.slice(1).split('&').reduce((accum: { [key: string]: string }, kvp) => {
+      const kvpArray = kvp.split('=');
+      accum[kvpArray[0]] = kvpArray[1];
+      return accum;
+    }, {});
+    return hashKeyValuePairs?.[key];
   }
 }
