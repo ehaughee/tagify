@@ -13,6 +13,13 @@ const routes: Route[] = [
       await import('./pages/tag-login');
     }
   },
+  {
+    path: '/playlists',
+    component: 'tag-playlists',
+    action: async () => {
+      await import('./pages/tag-playlists');
+    }
+  }
 ]
 
 const outlet = document.getElementById('outlet');
