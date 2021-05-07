@@ -1,5 +1,5 @@
 import { LitElement, html, css } from 'lit';
-import { property, customElement } from 'lit/decorators.js';
+import { customElement } from 'lit/decorators.js';
 
 @customElement('tag-login')
 export class AppRoot extends LitElement {
@@ -23,9 +23,7 @@ export class AppRoot extends LitElement {
 
 
   static get styles() {
-    return css`
-      
-    `;
+    return css``;
   }
 
   render() {

@@ -1,52 +1,34 @@
 import { LitElement, html, css } from 'lit';
-import { property, customElement } from 'lit/decorators.js';
+import { customElement, state } from 'lit/decorators.js';
+import PlaylistsModel from '../models/playlists';
+
+import '../components/tag-table';
 
 @customElement('tag-playlists')
-export class AppRoot extends LitElement {
-  @property({ type: Array }) headers: string[] = ['test', 'test2'];
-  @property({ type: Array }) items: any[] = [['test-val', 'test-another-val'], ['3', '4']];
-  
+export class Playlists extends LitElement {
+  @state() playlists: SpotifyApi.PlaylistObjectSimplified[] = [];
+
   static get styles() {
     return css``;
   }
 
-  // TODO: Move this into a tag-table component and use global state or something
+  connectedCallback() {
+    super.connectedCallback();
+    return PlaylistsModel.getPlaylists()
+    .then((playlists => {
+      console.log('done', playlists);
+      this.playlists = playlists;
+    }));
+  }
+  // .items="${this.playlists.map(p => [p.name, p.description || ''])}"
+
   render() {
+    console.log('rendering');
     return html`
-      <table>
-        ${this.renderTableHeader(this.headers)}
-        <tbody>
-          ${this.items.map(i => this.renderTableRow(i))}
-        </tbody>
-      </table>
-    `;
-  }
-
-  private renderTableHeader(headers: string[]) {
-    return html`
-      <thead>
-        <tr>
-          ${headers.map(h => html`
-            <th>${h}</th>
-          `)}
-        </tr>
-      </thead>
-    `;
-  }
-
-  private renderTableRow(cells: []) {
-    return html`
-      <tr>
-        ${cells.map(cell => this.renderTableCell(cell))}
-      </tr>
-    `;
-  }
-
-  private renderTableCell(cell: any) {
-    return html`
-      <td>
-        ${cell}
-      </td>
+      <tag-table
+        .headers="${['Name', 'Description']}"
+        .items="${this.playlists.map(p => [p.name, p.description ?? ''])}"
+      ></tag-table>
     `;
   }
 }

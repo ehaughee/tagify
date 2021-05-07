@@ -19,6 +19,13 @@ const routes: Route[] = [
     action: async () => {
       await import('./pages/tag-playlists');
     }
+  },
+  {
+    path: '/playlists/:id',
+    component: 'tag-playlist',
+    action: async () => {
+      await import('./pages/tag-playlist');
+    }
   }
 ]
 
