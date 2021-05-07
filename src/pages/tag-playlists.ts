@@ -16,14 +16,11 @@ export class Playlists extends LitElement {
     super.connectedCallback();
     return PlaylistsModel.getPlaylists()
     .then((playlists => {
-      console.log('done', playlists);
       this.playlists = playlists;
     }));
   }
-  // .items="${this.playlists.map(p => [p.name, p.description || ''])}"
 
   render() {
-    console.log('rendering');
     return html`
       <tag-table
         .headers="${['Name', 'Description']}"
