@@ -3,7 +3,7 @@ import Cookies from 'js-cookie';
 import { add } from 'date-fns';
 
 type PlaylistListCache = SpotifyApi.PlaylistObjectSimplified[];
-type PlaylistFullCache = { [key: string]: SpotifyApi.PlaylistObjectSimplified }
+type PlaylistFullCache = { [key: string]: SpotifyApi.PlaylistObjectFull }
 
 class Playlists {
   private readonly ACCESS_TOKEN_COOKIE_NAME = 'tagify_access_token';
@@ -36,7 +36,7 @@ class Playlists {
     });
   }
 
-  async getPlaylist(playlistId: string) {
+  async getPlaylist(playlistId: string): Promise<SpotifyApi.PlaylistObjectFull> {
     return new Promise((resolve, reject) => {
       if (this.playlistCache?.[playlistId]) {
         console.log(`[Cache] HIT for playlist '${playlistId}'`);
