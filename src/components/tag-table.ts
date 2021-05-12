@@ -2,15 +2,20 @@ import { LitElement, html, css, TemplateResult } from 'lit';
 import { property, customElement } from 'lit/decorators.js';
 
 // TODO: Move to a types file
+export interface TableColumn {
+  id: string;
+  header: string;
+  render: TableColumnRenderer;
+}
+export type TableCellValue = string | number | TemplateResult;
+export type TableColumnRenderer = (cellData: any) => TemplateResult;
 export type TableHeader = string;
-export type TableCell = string;
-export type TableRow = TableCell[];
-export type TableCellRenderer = (cell: TableCell) => TemplateResult<any>;
+export type TableRow = TableColumn[];
 
 @customElement('tag-table')
 export class Table extends LitElement {
-  @property({ type: Array }) headers: TableHeader[] = [];
-  @property({ type: Array }) items: TableRow[] = [];
+  @property({ type: Array }) columns: TableColumn[] = [];
+  @property({ type: Array }) data: any[] = [{}];
   
   static get styles() {
     return css``;
@@ -19,42 +24,43 @@ export class Table extends LitElement {
   render() {
     return html`
       <table>
-        ${this.renderTableHeader(this.headers)}
+        ${this.renderTableHeader(this.columns)}
         <tbody>
-          ${this.items.map(i => this.renderTableRow(i, this.renderTableCell))}
+          ${this.data.map(item => this.renderTableRow(item))}
         </tbody>
       </table>
     `;
   }
 
-  private renderTableHeader(headers: TableHeader[]) {
+  private renderTableHeader(columns: TableColumn[]): TemplateResult {
     return html`
       <thead>
-        ${this.renderTableRow(headers, this.renderTableHeaderCell)}
+        ${columns.map((col: TableColumn) => this.renderTableHeaderCell(col))}
       </thead>
     `;
   }
 
-  private renderTableRow(cells: TableCell[] | TableHeader[], cellRenderer: TableCellRenderer) {
+  private renderTableRow(data: any) {
     return html`
       <tr>
-        ${cells.map(cell => cellRenderer(cell))}
+        ${this.columns.map(
+          (col: TableColumn, colIndex: number) => this.renderTableCell(data, colIndex))}
       </tr>
     `;
   }
 
-  private renderTableCell(cell: TableCell) {
+  private renderTableCell(cellData: any, colIndex: number) {
     return html`
       <td>
-        ${cell}
+        ${this.columns[colIndex].render(cellData)}
       </td>
     `;
   }
 
-  private renderTableHeaderCell(cell: TableCell) {
+  private renderTableHeaderCell(col: TableColumn) {
     return html`
       <th>
-        ${cell}
+        ${col?.header || ''}
       </th>
     `;
   }

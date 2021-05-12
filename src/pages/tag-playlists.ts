@@ -3,6 +3,7 @@ import { customElement, state } from 'lit/decorators.js';
 import PlaylistsModel from '../models/playlists';
 
 import '../components/tag-table';
+import type { TableColumn } from '../components/tag-table';
 
 @customElement('tag-playlists')
 export class Playlists extends LitElement {
@@ -10,6 +11,25 @@ export class Playlists extends LitElement {
 
   static get styles() {
     return css``;
+  }
+
+  get columns(): TableColumn[] {
+    return [
+      {
+        id: 'name',
+        header: 'Name',
+        render: (data) => html`
+          <a href="/playlists/${data.id}">
+            ${data.name}
+          </a>
+        `,
+      },
+      {
+        id: 'description',
+        header: 'Description',
+        render: (data) => html`${data.description || ''}`,
+      }
+    ]
   }
 
   connectedCallback() {
@@ -23,8 +43,8 @@ export class Playlists extends LitElement {
   render() {
     return html`
       <tag-table
-        .headers="${['Name', 'Description']}"
-        .items="${this.playlists.map(p => [p.name, p.description ?? ''])}"
+        .data=${this.playlists}
+        .columns=${this.columns}
       ></tag-table>
     `;
   }
