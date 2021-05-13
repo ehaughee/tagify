@@ -23,6 +23,7 @@ class Playlists {
       if (this.playlistsListCache?.length > 0) {
         console.log('[Cache] HIT for Playlist List');
         resolve(this.playlistsListCache);
+        return;
       }
 
       console.log('[Cache] MISS for Playlist List');
@@ -42,6 +43,7 @@ class Playlists {
         console.log(`[Cache] HIT for playlist '${playlistId}'`);
         
         resolve(this.playlistCache[playlistId]);
+        return;
       }
 
       console.log(`[Cache] MISS for playlist '${playlistId}'`);
