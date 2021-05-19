@@ -13,7 +13,26 @@ export class Playlists extends LitElement {
     return css``;
   }
 
-  get columns(): TableColumn[] {
+  connectedCallback() {
+    super.connectedCallback();
+    return PlaylistsModel.getPlaylists()
+    .then((playlists => {
+      this.playlists = playlists;
+    }));
+  }
+
+  render() {
+    return html`
+      <tag-table
+        .data=${this.playlists}
+        .columns=${this.columns}
+        @prevClick=${this.onClickPrev}
+        @nextClick=${this.onClickNext}
+      ></tag-table>
+    `;
+  }
+
+  private get columns(): TableColumn<SpotifyApi.PlaylistObjectSimplified>[] {
     return [
       {
         id: 'name',
@@ -32,20 +51,11 @@ export class Playlists extends LitElement {
     ]
   }
 
-  connectedCallback() {
-    super.connectedCallback();
-    return PlaylistsModel.getPlaylists()
-    .then((playlists => {
-      this.playlists = playlists;
-    }));
+  private onClickNext() {
+    console.log('Got click next event');
   }
 
-  render() {
-    return html`
-      <tag-table
-        .data=${this.playlists}
-        .columns=${this.columns}
-      ></tag-table>
-    `;
+  private onClickPrev() {
+    console.log('Got click prev event');
   }
 }
