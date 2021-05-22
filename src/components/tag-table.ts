@@ -16,15 +16,18 @@ export type TableCellValue = string | number | TemplateResult;
 export type TableColumnRenderer<T> = (cellData: T) => TemplateResult;
 export type TableHeader = string;
 export type TableRow<T> = TableColumn<T>[];
+export type TablePaginationClickHandler = (paginationState: TablePaginationState) => Promise<any[]>;
 // export type TableOnClickHandler = ((paginationState: TablePaginationState) => Promise<any[]>) | undefined;
 
 @customElement('tag-table')
 export class Table<T> extends LitElement {
   @property({ type: Array }) columns: TableColumn<T>[] = [];
   @property({ type: Array }) data: any[] = [{}];
+  @property({ attribute: false }) onClickNext: TablePaginationClickHandler | undefined;
+  @property({ attribute: false }) onClickPrev: TablePaginationClickHandler | undefined;
 
   @state() paginationState: TablePaginationState = {
-    curPage: 1,
+    curPage: 0,
     pageSize: 100,
   };
   
@@ -40,40 +43,30 @@ export class Table<T> extends LitElement {
           ${this.data.map(item => this.renderTableRow(item))}
         </tbody>
       </table>
-      <div>
-        <a href="javascript:void(0)" @click=${this.prevClickHandler}>Prev</a>
-        <a href="javascript:void(0)" @click=${this.nextClickHandler}>Next</a>
-      </div>
+      ${this.renderTablePagination()}
     `;
   }
 
   private nextClickHandler() {
     this.paginationState.curPage += 1;
-    this.dispatchEvent(new CustomEvent('nextClick', {
-      detail: this.paginationState,
-    }));
-    console.log(this.paginationState);
-    // if(this.onClickNext) {}
-    //   this.onClickNext(this.paginationState)
-    //   .then(items => {
-    //     console.log(items);
-    //   });
-    // }
+
+    if(this.onClickNext) {
+      this.onClickNext(this.paginationState)
+      .then((items) => {
+        this.data = items;
+      });
+    }
   }
 
   private prevClickHandler() {
-    // if (this.onClickPrev) {
-    //   this.onClickPrev(this.paginationState)
-    //   .then(items => {
-    //     console.log(items);
-    //   });
-    // }
-
     this.paginationState.curPage -= 1;
-    this.dispatchEvent(new CustomEvent('prevClick', {
-      detail: this.paginationState,
-    }));
-    console.log(this.paginationState);
+
+    if (this.onClickPrev) {
+      this.onClickPrev(this.paginationState)
+      .then(items => {
+        this.data = items;
+      });
+    }
   }
 
   private renderTableHeader(columns: TableColumn<T>[]): TemplateResult {
@@ -107,6 +100,28 @@ export class Table<T> extends LitElement {
       <th>
         ${col?.header || ''}
       </th>
+    `;
+  }
+
+  // TODO: Move to a new component
+  private renderTablePagination() {
+    return html`
+      <div>
+        ${this.renderTablePaginationNavigateLink(this.prevClickHandler, 'Prev', this.paginationState.curPage > 0)}
+        ${this.renderTablePaginationNavigateLink(this.nextClickHandler, 'Next', this.data.length >= this.paginationState.pageSize )}
+      </div>
+    `;
+  }
+
+  private renderTablePaginationNavigateLink(handler: Function, text: string, enabled: boolean = true) {
+    if (enabled) {
+      return html`
+        <a href="javascript:void(0)" @click=${handler}>${text}</a>
+      `;
+    }
+
+    return html`
+      ${text}
     `;
   }
 }

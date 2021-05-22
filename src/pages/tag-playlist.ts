@@ -26,25 +26,13 @@ export class Playlist extends LitElement {
   }
 
   render() {
-    // return html`
-    //   <h1>${this.playlist?.name || ''}</h1>
-    //   <ol>
-    //     ${this.playlist?.tracks.items.map(item => {
-    //       return html`
-    //         <li>
-    //           ${item.track.name}
-    //         </li>
-    //       `;
-    //     })}
-    //   </ol>
-    // `;
-
+    // @ts-ignore, no generic supprt in html template literals
     return html`
       <tag-table
         .data=${this.tracks}
         .columns=${this.columns}
-        @prevClick=${this.onClickPrev}
-        @nextClick=${this.onClickNext}
+        .onClickPrev=${this.onTablePaginateHandler}
+        .onClickNext=${this.onTablePaginateHandler}
       ></tag-table>
     `;
   }
@@ -65,21 +53,12 @@ export class Playlist extends LitElement {
       }
     ]
   }
-
-  private onClickPrev(_e: CustomEvent<TablePaginationState>) {
-    // TODO: For the simple case, nothing needs to be done here.
-    //       Refreshing the table at any page > 1 will require
-    //       an API call on previous.
-  }
   
-  private onClickNext(e: CustomEvent<TablePaginationState>) {
-    const offset = e.detail.curPage * e.detail.pageSize;
-    const limit = e.detail.pageSize;
-    console.log(`Offset: ${offset}, Limit: ${limit}`);
-    PlaylistsModel.getPlaylistTracks(this.playlist?.id, offset, limit)
-    .then(tracks => {
-      console.log(tracks);
-    })
+  private onTablePaginateHandler = async (paginationState: TablePaginationState) => {
+    const offset = paginationState.curPage * paginationState.pageSize;
+    const limit = paginationState.pageSize;
+    const playlistTrackObjects = await PlaylistsModel.getPlaylistTracks(this.playlist?.id, offset, limit);
+    return playlistTrackObjects.map(obj => obj.track);
   }
 
   private formatArtistList(artists: SpotifyApi.ArtistObjectSimplified[]) {

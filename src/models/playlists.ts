@@ -102,8 +102,8 @@ class Playlists {
 
     if (start > cache.length) return false;
     if (cache.length < 1) return false;
-
-    return cache.slice(start, start + count).every(e => e != null);
+    const cacheSpan = cache.slice(start, start + count);
+    return cacheSpan.length > 0 && cacheSpan.every(e => e != null);
   }
 
   // TOOD: Move this following functions to a mixin/helper
