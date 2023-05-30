@@ -2,8 +2,11 @@ import SpotifyWebApi from 'spotify-web-api-js';
 import Cookies from 'js-cookie';
 import { add } from 'date-fns';
 
-type PlaylistListCache = SpotifyApi.PlaylistObjectSimplified[];
+type PlaylistListCache = TagifyPlaylistSimplified[];
 type PlaylistFullCache = { [key: string]: SpotifyApi.PlaylistObjectFull }
+interface TagifyPlaylistSimplified extends SpotifyApi.PlaylistObjectSimplified {
+  key: string
+}
 
 class Playlists {
   private readonly ACCESS_TOKEN_COOKIE_NAME = 'tagify_access_token';
@@ -23,11 +26,11 @@ class Playlists {
    * @param cache Whether to look in the cache or not.  Default: true
    * @returns The current users playlists, paginated
    */
-  async getPlaylists(cache = true): Promise<SpotifyApi.PlaylistObjectSimplified[]> {
+  async getPlaylists(cache = true): Promise<TagifyPlaylistSimplified[]> {
     return new Promise((resolve, reject) => {
       if (cache && this.playlistsListCache.length > 0) {
         console.log('[Cache] HIT for Playlist List');
-        resolve(this.playlistsListCache);
+        return this.playlistsListCache;
         return;
       }
 
@@ -35,8 +38,16 @@ class Playlists {
       
       this.spotifyApi.getUserPlaylists()
       .then((response) => {
-        this.playlistsListCache = response.items;
-        resolve(response.items);
+        const tagifyPlaylists = response.items.map(playlist => {
+          // Set key property for React
+          const tagifyPlaylist = {
+            key: playlist.id,
+            ...playlist
+          };
+          return tagifyPlaylist
+        })
+        this.playlistsListCache = tagifyPlaylists;
+        resolve(tagifyPlaylists);
       })
       .catch(e => reject(e));
     });
