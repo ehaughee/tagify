@@ -38,7 +38,9 @@ const router = createBrowserRouter([
     element: <Playlist />,
     errorElement: <>fuck</>,
     loader: async ({ params }) => {
-      return await PlaylistsModel.getPlaylist(params.playlistID!)
+      if (params.playlistID != null && params.playlistID != "") {
+        return await PlaylistsModel.getPlaylist(params.playlistID)
+      }
     },
   }
 ]);

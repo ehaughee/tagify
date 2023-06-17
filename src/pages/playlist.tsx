@@ -1,20 +1,24 @@
 import { Table } from "antd"
 import { ColumnsType } from "antd/es/table"
 import { useLoaderData } from "react-router-dom"
-import { TagifyPlaylist } from "../models/playlists";
+import PlaylistsModel, { TagifyPlaylist, TagifyPlaylistTrack } from "../models/playlists";
+import TagSelect, { Tag } from "./components/tagSelect";
+import { useEffect, useState } from "react";
 
 
 export default function Playlist() {
-  const playlist = useLoaderData() as TagifyPlaylist
-  const items = playlist.tracks.items.map((track) => {
-    return {
-      key: track.track.id,
-      ...track,
-    }
-  })
+  const [ tags, setTags ] = useState<Tag[]>([])
 
-  const columns: ColumnsType<SpotifyApi.PlaylistTrackObject> = [
-    // playlist.tracks.items[0].track.artists[0].name
+  useEffect(() => {
+    PlaylistsModel.getPlaylists()
+      .then(playlists => {
+        setTags(playlists.map(playlist => ({ name: playlist.name, id: playlist.id })))
+      })
+  }, [tags])
+
+  const playlist = useLoaderData() as TagifyPlaylist
+
+  const columns: ColumnsType<TagifyPlaylistTrack> = [
     {
       title: "Title",
       dataIndex: ["track", "name"],
@@ -33,8 +37,15 @@ export default function Playlist() {
         );
         return artistNameList.join(" ");
       }
+    },
+    {
+      title: "Tags",
+      key: "tags",
+      render: (_, track) => {
+        return <TagSelect selectedTags={track.tags} tags={tags} />
+      }
     }
   ];
   
-  return <Table columns={columns} dataSource={items} />;
+  return <Table columns={columns} dataSource={[...playlist.tracks]} />;
 }
