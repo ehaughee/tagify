@@ -1,19 +1,11 @@
-import { useEffect, useState } from "react";
-import PlaylistsModel from "../models/playlists";
+import { TagifyPlaylistSimplified } from "../models/playlists";
 import Table, { ColumnsType } from "antd/es/table";
 import Link from "antd/es/typography/Link";
 import { Checkbox } from "antd";
+import { useLoaderData } from "react-router-dom";
 
 export default function Playlists() {
-  const [playlists, setPlaylists] = useState<
-    SpotifyApi.PlaylistObjectSimplified[]
-  >([]);
-  useEffect(() => {
-    async function getPlaylists() {
-      setPlaylists(await PlaylistsModel.getPlaylists());
-    }
-    getPlaylists();
-  }, []);
+  const playlists = useLoaderData() as TagifyPlaylistSimplified[]
 
   const columns: ColumnsType<SpotifyApi.PlaylistObjectSimplified> = [
     {

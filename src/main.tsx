@@ -29,6 +29,9 @@ const router = createBrowserRouter([
     path: "/playlists",
     element: <Playlists />,
     errorElement: <>fuck</>,
+    loader: async () => {
+      return await PlaylistsModel.getPlaylists();
+    }
   },
   {
     path: "/playlist/:playlistID",
