@@ -1,10 +1,12 @@
 import SpotifyWebApi from "spotify-web-api-js";
 import Cookies from "js-cookie";
 import { add } from "date-fns";
+import { Cache, CacheClass } from "memory-cache";
 
-type PlaylistListCache = TagifyPlaylistSimplified[];
-type PlaylistFullCache = { [key: string]: TagifyPlaylist };
-interface TagifyPlaylistSimplified extends SpotifyApi.PlaylistObjectSimplified {
+const PLAYLISTS_CACHE_KEY = "user_playlists"
+const PLAYLISTS_CACHE_TTL_MS = 1000 * 60; // 1 minute
+
+export interface TagifyPlaylistSimplified extends SpotifyApi.PlaylistObjectSimplified {
   key: string;
 }
 
@@ -13,17 +15,20 @@ export interface TagifyPlaylist {
   tracks: SpotifyApi.PagingObject<SpotifyApi.PlaylistTrackObject>;
 }
 
-class Playlists {
+class PlaylistsModel {
   private readonly ACCESS_TOKEN_COOKIE_NAME = "tagify_access_token";
   private readonly spotifyApi: SpotifyWebApi.SpotifyWebApiJs;
-
-  private playlistsListCache: PlaylistListCache = [];
-  private playlistCache: PlaylistFullCache = {};
+  private playlistsSimplifiedCache: CacheClass<string, TagifyPlaylistSimplified[]>;
+  private playlistsCache: CacheClass<string, TagifyPlaylist>
+  private playlistTracksCache: CacheClass<string, SpotifyApi.PlaylistTrackObject[]>;
 
   constructor() {
     // Make the API object an singleton and initialize it on parse
     this.spotifyApi = new SpotifyWebApi();
     this.spotifyApi.setAccessToken(this.getAccessToken());
+    this.playlistsSimplifiedCache = new Cache();
+    this.playlistsCache = new Cache();
+    this.playlistTracksCache = new Cache();
   }
 
   /**
@@ -33,9 +38,12 @@ class Playlists {
    */
   async getPlaylists(cache = true): Promise<TagifyPlaylistSimplified[]> {
     return new Promise((resolve, reject) => {
-      if (cache && this.playlistsListCache.length > 0) {
-        console.log("[Cache] HIT for Playlist List");
-        return this.playlistsListCache;
+      if (cache) {
+        const playlists = this.playlistsSimplifiedCache.get(PLAYLISTS_CACHE_KEY);
+        if (playlists != null) {
+          console.log("[Cache] HIT for Playlist List");
+          return playlists;
+        }
       }
 
       console.log(`[Cache] ${cache ? "MISS" : "SKIP"} for Playlist List`);
@@ -45,13 +53,13 @@ class Playlists {
         .then((response) => {
           const tagifyPlaylists = response.items.map((playlist) => {
             // Set key property for React
-            const tagifyPlaylist = {
+            const tagifyPlaylist: TagifyPlaylistSimplified = {
               key: playlist.id,
               ...playlist,
             };
             return tagifyPlaylist;
           });
-          this.playlistsListCache = tagifyPlaylists;
+          this.playlistsSimplifiedCache.put(PLAYLISTS_CACHE_KEY, tagifyPlaylists, PLAYLISTS_CACHE_TTL_MS);
           resolve(tagifyPlaylists);
         })
         .catch((e) => reject(e));
@@ -69,11 +77,14 @@ class Playlists {
     cache = true
   ): Promise<TagifyPlaylist> {
     return new Promise((resolve, reject) => {
-      if (cache && this.playlistCache?.[playlistId]) {
-        console.log(`[Cache] HIT for playlist '${playlistId}'`);
-
-        resolve(this.playlistCache[playlistId]);
-        return;
+      if (cache) {
+        const playlist = this.playlistsCache.get(playlistId)
+        if (playlist != null) {
+          console.log(`[Cache] HIT for playlist '${playlistId}'`);
+  
+          resolve(playlist);
+          return;
+        }
       }
 
       console.log(
@@ -84,7 +95,7 @@ class Playlists {
         .getPlaylist(playlistId)
         .then((getPlaylistResponse) => {
           
-          // Get all playlist tracks
+          // Get first page of playlist tracks
           //  TODO: Paginate
           this.spotifyApi
           .getPlaylistTracks(playlistId, { limit: 50 })
@@ -93,7 +104,7 @@ class Playlists {
               playlist: getPlaylistResponse,
               tracks: getPlaylistTracksResponse,
             };
-            this.playlistCache[playlistId] = playlist;
+            this.playlistsCache.put(playlistId, playlist, PLAYLISTS_CACHE_TTL_MS);
             resolve(playlist)
           })
           .catch((e) => reject(e));
@@ -117,27 +128,19 @@ class Playlists {
     cache = true
   ): Promise<SpotifyApi.PlaylistTrackObject[]> {
     return new Promise((resolve, reject) => {
-      if (
-        cache &&
-        this.cacheSpanInitialized(
-          this.playlistCache?.[playlistId]?.tracks.items,
-          offset,
-          limit
-        )
-      ) {
-        console.log(
-          `[Cache] HIT for playlist '${playlistId}[${offset}, ${
-            offset + limit
-          }]'`
-        );
-
-        resolve(
-          this.playlistCache[playlistId]?.tracks.items.slice(
-            offset,
-            offset + limit
-          )
-        );
-        return;
+      const cacheKey = this.buildPlaylistTracksCacheKey(playlistId, offset, limit);
+      if (cache) {
+        const playlistSpan = this.playlistTracksCache.get(cacheKey)
+        if (playlistSpan != null) {
+          console.log(
+            `[Cache] HIT for playlist '${playlistId}[${offset}, ${
+              offset + limit
+            }]'`
+          );
+  
+          resolve(playlistSpan);
+          return;
+        }
       }
 
       console.log(
@@ -149,26 +152,26 @@ class Playlists {
       this.spotifyApi
         .getPlaylistTracks(playlistId, { offset: offset, limit: limit })
         .then((response) => {
-          this.playlistCache[playlistId]?.tracks.items.splice(
-            offset,
-            limit,
-            ...response.items
-          );
+          this.playlistTracksCache.put(cacheKey, response.items, PLAYLISTS_CACHE_TTL_MS);
           resolve(response.items);
         })
         .catch((e) => reject(e));
     });
   }
 
-  private cacheSpanInitialized(cache: any[], start: number, count: number) {
-    if (count < 1) throw new Error("'count' must be greater than 0");
-    if (start < 0) throw new Error("'start' must be greater than 0");
-
-    if (start > cache.length) return false;
-    if (cache.length < 1) return false;
-    const cacheSpan = cache.slice(start, start + count);
-    return cacheSpan.length > 0 && cacheSpan.every((e) => e != null);
+  private buildPlaylistTracksCacheKey(playlistId: string, offset: number, limit: number): string {
+    return `${playlistId}_${offset}_${limit}`;
   }
+
+  // private cacheSpanInitialized(cache: any[], start: number, count: number) {
+  //   if (count < 1) throw new Error("'count' must be greater than 0");
+  //   if (start < 0) throw new Error("'start' must be greater than 0");
+
+  //   if (start > cache.length) return false;
+  //   if (cache.length < 1) return false;
+  //   const cacheSpan = cache.slice(start, start + count);
+  //   return cacheSpan.length > 0 && cacheSpan.every((e) => e != null);
+  // }
 
   // TOOD: Move this following functions to a mixin/helper
   private getAccessToken() {
@@ -219,4 +222,6 @@ class Playlists {
   }
 }
 
-export default new Playlists();
+const singletonPlaylistModel = Object.freeze(new PlaylistsModel());
+
+export default singletonPlaylistModel
