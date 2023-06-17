@@ -3,9 +3,14 @@ import Cookies from "js-cookie";
 import { add } from "date-fns";
 
 type PlaylistListCache = TagifyPlaylistSimplified[];
-type PlaylistFullCache = { [key: string]: SpotifyApi.PlaylistObjectFull };
+type PlaylistFullCache = { [key: string]: TagifyPlaylist };
 interface TagifyPlaylistSimplified extends SpotifyApi.PlaylistObjectSimplified {
   key: string;
+}
+
+export interface TagifyPlaylist {
+  playlist: SpotifyApi.PlaylistObjectFull;
+  tracks: SpotifyApi.PagingObject<SpotifyApi.PlaylistTrackObject>;
 }
 
 class Playlists {
@@ -31,7 +36,6 @@ class Playlists {
       if (cache && this.playlistsListCache.length > 0) {
         console.log("[Cache] HIT for Playlist List");
         return this.playlistsListCache;
-        return;
       }
 
       console.log(`[Cache] ${cache ? "MISS" : "SKIP"} for Playlist List`);
@@ -63,7 +67,7 @@ class Playlists {
   async getPlaylist(
     playlistId: string,
     cache = true
-  ): Promise<SpotifyApi.PlaylistObjectFull> {
+  ): Promise<TagifyPlaylist> {
     return new Promise((resolve, reject) => {
       if (cache && this.playlistCache?.[playlistId]) {
         console.log(`[Cache] HIT for playlist '${playlistId}'`);
@@ -78,9 +82,21 @@ class Playlists {
 
       this.spotifyApi
         .getPlaylist(playlistId)
-        .then((response) => {
-          this.playlistCache[playlistId] = response;
-          resolve(response);
+        .then((getPlaylistResponse) => {
+          
+          // Get all playlist tracks
+          //  TODO: Paginate
+          this.spotifyApi
+          .getPlaylistTracks(playlistId, { limit: 50 })
+          .then((getPlaylistTracksResponse) => {
+            const playlist: TagifyPlaylist = {
+              playlist: getPlaylistResponse,
+              tracks: getPlaylistTracksResponse,
+            };
+            this.playlistCache[playlistId] = playlist;
+            resolve(playlist)
+          })
+          .catch((e) => reject(e));
         })
         .catch((e) => reject(e));
     });
@@ -97,7 +113,7 @@ class Playlists {
   async getPlaylistTracks(
     playlistId: string,
     offset = 0,
-    limit = 100,
+    limit = 50, // Maximum API allows
     cache = true
   ): Promise<SpotifyApi.PlaylistTrackObject[]> {
     return new Promise((resolve, reject) => {

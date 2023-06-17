@@ -11,6 +11,8 @@ import Login from "./pages/login.tsx";
 import HomePage from "./pages/home.tsx";
 import Nav from "./pages/components/nav.tsx";
 import Playlists from "./pages/playlists.tsx";
+import Playlist from "./pages/playlist.tsx";
+import PlaylistsModel from "./models/playlists";
 
 const router = createBrowserRouter([
   {
@@ -28,6 +30,14 @@ const router = createBrowserRouter([
     element: <Playlists />,
     errorElement: <>fuck</>,
   },
+  {
+    path: "/playlist/:playlistID",
+    element: <Playlist />,
+    errorElement: <>fuck</>,
+    loader: async ({ params }) => {
+      return await PlaylistsModel.getPlaylist(params.playlistID!)
+    },
+  }
 ]);
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(

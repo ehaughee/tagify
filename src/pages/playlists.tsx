@@ -20,6 +20,7 @@ export default function Playlists() {
       title: "Name",
       dataIndex: "name",
       key: "name",
+      render: (name, { id }) => <Link href={`/playlist/${id}`}>{name}</Link>,
     },
     {
       title: "Public",
