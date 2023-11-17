@@ -124,6 +124,15 @@ class PlaylistsModel {
     });
   }
 
+  async getAllPlaylistTracks(playlistId: string): Promise<TagifyPlaylistTrack[]> {
+    let tracksResponse = this.getPlaylistTracks(playlistId);
+    do {
+
+    } while (tracksResponse)
+
+    return [];
+  }
+
   /**
    * Get tracks from a playlist by offset and limit
    * @param playlistId The ID of the playlist to retrieve tracks from
@@ -159,8 +168,8 @@ class PlaylistsModel {
 
       this.spotifyApi
         .getPlaylistTracks(playlistId, { offset: offset, limit: limit })
-        .then((response) => {
-          const tracks = this.makeTagifyTracks(response.items)
+        .then(async response => {
+          const tracks = await this.makeTagifyTracks(response.items)
 
           this.playlistTracksCache.put(cacheKey, tracks, PLAYLISTS_CACHE_TTL_MS);
 
@@ -172,18 +181,53 @@ class PlaylistsModel {
     });
   }
 
-  private makeTagifyTracks(spotifyTracks: SpotifyApi.PlaylistTrackObject[]): TagifyPlaylistTrack[] {
-    return spotifyTracks.map(spotifyTrack => ({
-      key: spotifyTrack.track.id,
-      tags: this.getTrackTags(spotifyTrack),
-      ...spotifyTrack
-    }))
+  private async getAllTracks(): Promise<TagifyPlaylistTrack[]> {
+    const playlists = await this.getPlaylists()
+    const tracks: TagifyPlaylistTrack[] = [];
+
+    for (const playlist of playlists) {
+      let next = "";
+
+      // Grab all tracks in playlist, accounting for pagination
+      do {
+        const resp = await this.spotifyApi.getPlaylistTracks(playlist.id, {next});
+        next = resp.next;
+        tracks.concat(resp.items.map((track): TagifyPlaylistTrack => {
+          return {
+            ...track,
+            key: track.track.id,
+            tags: [],
+          }
+        }));
+      } while(next != "")
+    }
+    return tracks;
   }
 
-  private getTrackTags(track: SpotifyApi.PlaylistTrackObject): Tag[] {
-    // Loop through all playlists in cache
-    // Look for presence in playlist
-    return [];
+  private async makeTagifyTracks(spotifyTracks: SpotifyApi.PlaylistTrackObject[]): Promise<TagifyPlaylistTrack[]> {
+    return await Promise.all(spotifyTracks.map(async spotifyTrack => ({
+      key: spotifyTrack.track.id,
+      tags: await this.getTrackTags(spotifyTrack),
+      ...spotifyTrack
+    })))
+  }
+
+  private async getTrackTags(track: SpotifyApi.PlaylistTrackObject): Promise<Tag[]> {
+    // Get all playlists
+    const playlists = await this.getPlaylists();
+
+    // Get playlists that contain our track
+    const containingPlaylists = await playlists.filter(async playlist => {
+      const tracks = await this.getAllPlaylistTracks(playlist.id)
+      if (tracks.some(playlistTrack => playlistTrack.track.id == track.track.id)) {
+        return true;
+      }
+
+      return false;
+    });
+
+    // Return tags matching the playlists
+    return containingPlaylists.map(playlist => ({ name: playlist.name, id: playlist.id }));
   }
 
   private buildPlaylistTracksCacheKey(playlistId: string, offset: number, limit: number): string {

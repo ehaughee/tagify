@@ -29,11 +29,14 @@ const TagSelect: React.FC<TagSelectProps> = (props) => {
 
   return (
     <Cascader
-      style={{width: "100%"}}
+      style={{minWidth: "100%"}}
       defaultValue={selectedTags}
       options={tags}
+      maxTagPlaceholder="..."
+      maxTagCount={5}
       multiple
       changeOnSelect
+      showSearch
       onChange={onChange}
     />
   )
