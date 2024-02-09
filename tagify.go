@@ -1,15 +1,21 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"tagify/middleware"
+	"time"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"github.com/zmb3/spotify/v2"
 	spotifyauth "github.com/zmb3/spotify/v2/auth"
+	"golang.org/x/oauth2"
 )
 
 const (
@@ -21,7 +27,9 @@ const (
 
 	COOKIE_AUTH_KEY = "COOKIE_AUTH_KEY"
 
-	sessionTokenKey = "session-token"
+	spotifyTokenSessionKey        = "spotify-token"
+	spotifyAccessTokenSessionKey  = "spotify-access-token"
+	spotifyRefreshTokenSessionKey = "spotify-refresh-token"
 )
 
 var (
@@ -33,7 +41,7 @@ func main() {
 	// TODO: Conditionally do this depending on the Gin mode (dev vs release)
 	err := godotenv.Load()
 	if err != nil {
-		log.Fatalf("Error loading .env file: %v", err)
+		log.Fatalf("Failed to load .env file with error: %v", err)
 	}
 
 	// Create new Spotify Authenticator.  This must be done after we've loaded the environment variables.
@@ -45,12 +53,23 @@ func main() {
 	r := gin.Default()
 
 	// Setup session management
+	// TODO: Use a backend store such that the Spotify tokens are not in the cookie
 	cookieAuthKey := os.Getenv(COOKIE_AUTH_KEY)
 	if cookieAuthKey == "" {
 		log.Fatalf("Required environment variable %q was empty", COOKIE_AUTH_KEY)
 	}
 	store := cookie.NewStore([]byte(cookieAuthKey))
-	r.Use(sessions.Sessions("user_sessions", store))
+	// TODO: Figure out why these options seem to have no effect on the cookies actually written
+	store.Options(sessions.Options{
+		// Set max session duration to 61 minutes as the Spotify tokens last 60 minutes
+		MaxAge:   int(time.Minute * 61),
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+	})
+	r.Use(sessions.Sessions("tagify_user_session", store))
+
+	// Setup error handling
+	r.Use(middleware.ErrorHandler)
 
 	setupRoutes(r)
 
@@ -60,7 +79,7 @@ func main() {
 func setupRoutes(r *gin.Engine) {
 	r.GET("/", rootHandler)
 	r.GET("/home", homeHandler)
-	r.GET("/ping", pingHandler)
+	r.GET("/playlists", playlistsHandler)
 	r.GET("/auth_redir", authRedirectHandler)
 	r.GET("/login", loginHandler)
 	r.GET("/logout", logoutHandler)
@@ -72,17 +91,46 @@ func rootHandler(c *gin.Context) {
 
 func homeHandler(c *gin.Context) {
 	if !loggedIn(c) {
-		c.Redirect(http.StatusTemporaryRedirect, "/login")
+		c.Redirect(http.StatusPermanentRedirect, "/login")
+	}
+
+	c.Data(http.StatusOK, "text/plain", []byte("welcome home"))
+}
+
+func playlistsHandler(c *gin.Context) {
+	// TODO: Add loggedIn? middleware
+	// TODO: Implement redirection back to original page if redirected to /login
+	if !loggedIn(c) {
+		c.Redirect(http.StatusPermanentRedirect, "/login")
+	}
+
+	token, err := getSpotifyToken(c)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	httpClient := auth.Client(c, token)
+	client := spotify.New(httpClient)
+
+	playlistPage, err := client.CurrentUsersPlaylists(c.Request.Context())
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	var playlists []spotify.SimplePlaylist
+	for {
+		playlists = append(playlists, playlistPage.Playlists...)
+		if err := client.NextPage(c.Request.Context(), playlistPage); err == spotify.ErrNoMorePages {
+			break
+		} else {
+			c.AbortWithError(http.StatusInternalServerError, err)
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"token": getSessionToken(c),
-	})
-}
-
-func pingHandler(c *gin.Context) {
-	c.JSON(200, gin.H{
-		"message": "pong",
+		"playlists": playlists,
 	})
 }
 
@@ -90,7 +138,7 @@ func loginHandler(c *gin.Context) {
 	// Check if we already have a token, meaning we're already logged in
 	// TODO: Handle token expiry as well as near-expiry
 	if !loggedIn(c) {
-		log.Printf("Auth URL: %s", auth.AuthURL("test"))
+		// TODO: Use a GUID, stored in the session, for state ("test") here
 		c.Redirect(http.StatusMovedPermanently, auth.AuthURL("test"))
 	}
 
@@ -106,6 +154,7 @@ func logoutHandler(c *gin.Context) {
 }
 
 func authRedirectHandler(c *gin.Context) {
+	// TODO: Generate a GUID here and use it for state ("test"), then store it in the session
 	token, err := auth.Token(c.Request.Context(), "test", c.Request)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
@@ -114,31 +163,68 @@ func authRedirectHandler(c *gin.Context) {
 		return
 	}
 
-	setSessionToken(token.AccessToken, c)
+	storeSpotifyToken(token, c)
 	c.Redirect(http.StatusTemporaryRedirect, "/home")
 }
 
 func loggedIn(c *gin.Context) bool {
-	return getSessionToken(c) != ""
+	token, err := getSpotifyToken(c)
+	return err == nil && token != nil
 }
 
-func getSessionToken(c *gin.Context) string {
-	token := sessions.Default(c).Get(sessionTokenKey)
-	if token == nil {
-		return ""
+func getSpotifyToken(c *gin.Context) (*oauth2.Token, error) {
+	sessionVal := sessions.Default(c).Get(spotifyTokenSessionKey)
+	if sessionVal == nil {
+		return nil, fmt.Errorf("failed to find Spotify token under session key %q", spotifyTokenSessionKey)
 	}
 
-	return token.(string)
+	if serializedToken, ok := sessionVal.(string); !ok {
+		return nil, fmt.Errorf("failed to find Spotify token with type %T, found %T", "", sessionVal)
+	} else if token, err := deserializeToken([]byte(serializedToken)); err != nil {
+		return nil, fmt.Errorf("failed to deserialize Spotify token with error: %w", err)
+	} else {
+		return token, nil
+	}
+
 }
 
-func setSessionToken(token string, c *gin.Context) {
+func storeSpotifyToken(token *oauth2.Token, c *gin.Context) error {
 	session := sessions.Default(c)
-	session.Set(sessionTokenKey, token)
+	if tokenBytes, err := serializeToken(token); err != nil {
+		return fmt.Errorf("failed to serialize Spotify token with error: %w", err)
+	} else {
+		session.Set(spotifyTokenSessionKey, string(tokenBytes))
+	}
+
+	session.Options(sessions.Options{
+		// Invalidate session at token expiry time
+		// TODO: Figure out why this is very wrong
+		MaxAge: int(time.Until(token.Expiry)),
+	})
 	session.Save()
+	return nil
+}
+
+func serializeToken(token *oauth2.Token) ([]byte, error) {
+	return json.Marshal(token)
+}
+
+func deserializeToken(tokenBytes []byte) (*oauth2.Token, error) {
+	token := &oauth2.Token{}
+	if err := json.Unmarshal(tokenBytes, token); err != nil {
+		return nil, err
+	}
+	return token, nil
 }
 
 func logOut(c *gin.Context) {
 	session := sessions.Default(c)
-	session.Delete(sessionTokenKey)
+	session.Delete(spotifyAccessTokenSessionKey)
+
+	// Invalidate the session
+	session.Options(sessions.Options{
+		MaxAge: -1,
+	})
+
 	session.Save()
 }
