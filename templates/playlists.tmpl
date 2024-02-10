@@ -14,7 +14,9 @@
       <tbody>
         {{ range .playlists }}
           <tr>
-            <td>{{ .Name }}</td>
+            <td>
+              <a href="/playlists/{{ .ID }}">{{ .Name }}</a>
+            </td>
             <td>{{ .ExternalURLs.spotify }}</td>
           </tr>
         {{end}}

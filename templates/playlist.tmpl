@@ -1,0 +1,36 @@
+<html>
+  <body>
+    <table>
+      <thead>
+        <tr>
+          <td>
+            Title
+          </td>
+          <td>
+            Artist
+          </td>
+          <td>
+            Album
+          </td>
+        </tr>
+      </thead>
+      <tbody>
+        {{ range .tracks }}
+          <tr>
+            <td>
+              {{ .Track.Track.SimpleTrack.Name }}
+            </td>
+            <td>
+              {{ range .Track.Track.SimpleTrack.Artists }}
+                {{ .Name }}
+              {{ end }}
+            </td>
+            <td>
+              {{ .Track.Track.SimpleTrack.Name }}
+            </td>
+          </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </body>
+</html>

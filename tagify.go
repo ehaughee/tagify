@@ -91,6 +91,8 @@ func setupRoutes(r *gin.Engine, cache_store persistence.CacheStore) {
 	r.GET("/home", homeHandler(cache_store))
 	r.GET("/playlists", playlistsHandler(cache_store))
 	r.GET("/playlists:format", playlistsHandler(cache_store))
+	// TODO: Figure out a better way to do .json because :id:format doesn't work
+	r.GET("/playlists/:id", playlistHandler(cache_store))
 	r.GET("/auth_redir", authRedirectHandler(cache_store))
 	r.GET("/login", loginHandler(cache_store))
 	r.GET("/logout", logoutHandler(cache_store))
@@ -110,13 +112,12 @@ func homeHandler(cache_store persistence.CacheStore) func(c *gin.Context) {
 			c.Redirect(http.StatusPermanentRedirect, "/login")
 		}
 
-		token, err := getSpotifyToken(c)
+		client, err := getClient(c)
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return
 		}
 
-		client := getClient(c, token)
 		currentUser, err := client.CurrentUser(c.Request.Context())
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
@@ -154,7 +155,7 @@ func playlistsHandler(cache_store persistence.CacheStore) func(c *gin.Context) {
 		httpClient := auth.Client(c, token)
 		client := spotify.New(httpClient)
 
-		playlistPage, err := client.CurrentUsersPlaylists(c.Request.Context())
+		playlistsPage, err := client.CurrentUsersPlaylists(c.Request.Context())
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return
@@ -162,8 +163,8 @@ func playlistsHandler(cache_store persistence.CacheStore) func(c *gin.Context) {
 
 		var playlists []spotify.SimplePlaylist
 		for {
-			playlists = append(playlists, playlistPage.Playlists...)
-			if err := client.NextPage(c.Request.Context(), playlistPage); err == spotify.ErrNoMorePages {
+			playlists = append(playlists, playlistsPage.Playlists...)
+			if err := client.NextPage(c.Request.Context(), playlistsPage); err == spotify.ErrNoMorePages {
 				break
 			} else if err != nil {
 				c.AbortWithError(http.StatusInternalServerError, err)
@@ -179,6 +180,44 @@ func playlistsHandler(cache_store persistence.CacheStore) func(c *gin.Context) {
 
 		c.HTML(http.StatusOK, "playlists.tmpl", gin.H{
 			"playlists": playlists,
+		})
+	})
+}
+
+func playlistHandler(cache_store persistence.CacheStore) func(c *gin.Context) {
+	return cache.CachePage(cache_store, time.Minute*5, func(c *gin.Context) {
+		playlistID := c.Param("id")
+
+		client, err := getClient(c)
+		if err != nil {
+			c.AbortWithError(http.StatusInternalServerError, err)
+		}
+
+		tracksPage, err := client.GetPlaylistItems(c.Request.Context(), spotify.ID(playlistID))
+		if err != nil {
+			c.AbortWithError(http.StatusInternalServerError, err)
+			return
+		}
+
+		var tracks []spotify.PlaylistItem
+		for {
+			tracks = append(tracks, tracksPage.Items...)
+			if err := client.NextPage(c.Request.Context(), tracksPage); err == spotify.ErrNoMorePages {
+				break
+			} else if err != nil {
+				c.AbortWithError(http.StatusInternalServerError, err)
+			}
+		}
+
+		if strings.ToLower(c.Param("format")) == ".json" {
+			c.JSON(http.StatusOK, gin.H{
+				"tracks": tracks,
+			})
+			return
+		}
+
+		c.HTML(http.StatusOK, "playlist.tmpl", gin.H{
+			"tracks": tracks,
 		})
 	})
 }
@@ -284,7 +323,12 @@ func logOut(c *gin.Context) {
 	session.Save()
 }
 
-func getClient(c *gin.Context, token *oauth2.Token) *spotify.Client {
+func getClient(c *gin.Context) (*spotify.Client, error) {
+	token, err := getSpotifyToken(c)
+	if err != nil {
+		return nil, err
+	}
+
 	httpClient := auth.Client(c, token)
-	return spotify.New(httpClient)
+	return spotify.New(httpClient), nil
 }
