@@ -1,0 +1,24 @@
+<html>
+  <body>
+    <table>
+      <thead>
+        <tr>
+          <td>
+            Name
+          </td>
+          <td>
+            Link
+          </td>
+        </tr>
+      </thead>
+      <tbody>
+        {{ range .playlists }}
+          <tr>
+            <td>{{ .Name }}</td>
+            <td>{{ .ExternalURLs.spotify }}</td>
+          </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </body>
+</html>

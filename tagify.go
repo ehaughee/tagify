@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"tagify/middleware"
 	"time"
 
@@ -52,6 +53,9 @@ func main() {
 
 	r := gin.Default()
 
+	// Load templates
+	r.LoadHTMLGlob("templates/*")
+
 	// Setup session management
 	// TODO: Use a backend store such that the Spotify tokens are not in the cookie
 	cookieAuthKey := os.Getenv(COOKIE_AUTH_KEY)
@@ -78,15 +82,19 @@ func main() {
 
 func setupRoutes(r *gin.Engine) {
 	r.GET("/", rootHandler)
+	r.GET("/home:format", homeHandler)
 	r.GET("/home", homeHandler)
 	r.GET("/playlists", playlistsHandler)
+	r.GET("/playlists:format", playlistsHandler)
 	r.GET("/auth_redir", authRedirectHandler)
 	r.GET("/login", loginHandler)
 	r.GET("/logout", logoutHandler)
 }
 
 func rootHandler(c *gin.Context) {
-	c.Data(http.StatusOK, "text/plain", []byte("ok"))
+	c.HTML(http.StatusOK, "index.tmpl", gin.H{
+		"message": "👋🏻",
+	})
 }
 
 func homeHandler(c *gin.Context) {
@@ -94,7 +102,30 @@ func homeHandler(c *gin.Context) {
 		c.Redirect(http.StatusPermanentRedirect, "/login")
 	}
 
-	c.Data(http.StatusOK, "text/plain", []byte("welcome home"))
+	token, err := getSpotifyToken(c)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	client := getClient(c, token)
+	currentUser, err := client.CurrentUser(c.Request.Context())
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	if strings.ToLower(c.Param("format")) == ".json" {
+		c.JSON(http.StatusOK, gin.H{
+			"currentUser": currentUser,
+		})
+		return
+	}
+
+	c.HTML(http.StatusOK, "home.tmpl", gin.H{
+		"name": currentUser.DisplayName,
+		"url":  currentUser.ExternalURLs["spotify"],
+	})
 }
 
 func playlistsHandler(c *gin.Context) {
@@ -129,7 +160,14 @@ func playlistsHandler(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	if strings.ToLower(c.Param("format")) == ".json" {
+		c.JSON(http.StatusOK, gin.H{
+			"playlists": playlists,
+		})
+		return
+	}
+
+	c.HTML(http.StatusOK, "playlists.tmpl", gin.H{
 		"playlists": playlists,
 	})
 }
@@ -227,4 +265,9 @@ func logOut(c *gin.Context) {
 	})
 
 	session.Save()
+}
+
+func getClient(c *gin.Context, token *oauth2.Token) *spotify.Client {
+	httpClient := auth.Client(c, token)
+	return spotify.New(httpClient)
 }
