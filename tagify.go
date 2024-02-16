@@ -252,7 +252,8 @@ func playlistHandler(cache_store persistence.CacheStore) func(c *gin.Context) {
 		}
 
 		c.HTML(http.StatusOK, "playlist.tmpl", gin.H{
-			"tracks": tracks,
+			"tracks":   tracks,
+			"playlist": playlist,
 		})
 	})
 }
