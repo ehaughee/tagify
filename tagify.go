@@ -53,7 +53,11 @@ func main() {
 	// Create new Spotify Authenticator.  This must be done after we've loaded the environment variables.
 	auth = spotifyauth.New(
 		spotifyauth.WithRedirectURL(authRedirectURL),
-		spotifyauth.WithScopes(spotifyauth.ScopeUserReadPrivate),
+		spotifyauth.WithScopes(
+			spotifyauth.ScopeUserReadPrivate,
+			spotifyauth.ScopePlaylistReadCollaborative,
+			spotifyauth.ScopeUserLibraryRead,
+		),
 	)
 
 	r := gin.Default()
@@ -181,7 +185,7 @@ func playlistsHandler(cache_store persistence.CacheStore) func(c *gin.Context) {
 		httpClient := auth.Client(c, token)
 		client := spotify.New(httpClient)
 
-		playlistsPage, err := client.CurrentUsersPlaylists(c.Request.Context())
+		playlistsPage, err := client.CurrentUsersPlaylists(c.Request.Context(), spotify.Limit(50))
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return
@@ -220,14 +224,22 @@ func playlistHandler(cache_store persistence.CacheStore) func(c *gin.Context) {
 		}
 
 		// Get playlist
-		playlist, err := client.GetPlaylist(c.Request.Context(), spotify.ID(playlistID))
+		playlist, err := client.GetPlaylist(
+			c.Request.Context(),
+			spotify.ID(playlistID),
+			spotify.Limit(50),
+		)
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return
 		}
 
 		// Get playlist tracks
-		tracksPage, err := client.GetPlaylistItems(c.Request.Context(), spotify.ID(playlistID))
+		tracksPage, err := client.GetPlaylistItems(
+			c.Request.Context(),
+			spotify.ID(playlistID),
+			spotify.Limit(50),
+		)
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return
