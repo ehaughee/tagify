@@ -1,0 +1,10 @@
+{{ template "base" .}}
+
+{{ define "title"}}Home{{ end }}
+{{ define "content" }}
+<p>
+  Hello, <a target="_blank" href="{{ .url }}">{{ .name }}</a>
+</p>
+<a href="/playlists">Playlists</a>
+<a href="/logout">Logout</a>
+{{ end }}

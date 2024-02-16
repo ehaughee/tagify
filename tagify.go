@@ -6,12 +6,14 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"tagify/middleware"
 	"time"
 
 	"github.com/gin-contrib/cache"
 	"github.com/gin-contrib/cache/persistence"
+	"github.com/gin-contrib/multitemplate"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
@@ -41,10 +43,11 @@ var (
 
 func main() {
 	// Load dev environment variables
-	// TODO: Conditionally do this depending on the Gin mode (dev vs release)
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatalf("Failed to load .env file with error: %v", err)
+	if gin.Mode() == gin.DebugMode {
+		err := godotenv.Load()
+		if err != nil {
+			log.Fatalf("Failed to load .env file with error: %v", err)
+		}
 	}
 
 	// Create new Spotify Authenticator.  This must be done after we've loaded the environment variables.
@@ -56,7 +59,7 @@ func main() {
 	r := gin.Default()
 
 	// Load templates
-	r.LoadHTMLGlob("templates/*")
+	r.HTMLRender = loadTemplates("./templates")
 
 	// Initialize cache
 	cache_store := persistence.NewInMemoryStore(time.Minute * 5)
@@ -83,6 +86,29 @@ func main() {
 	setupRoutes(r, cache_store)
 
 	r.Run()
+}
+
+func loadTemplates(templatesDir string) multitemplate.Renderer {
+	r := multitemplate.NewRenderer()
+
+	layouts, err := filepath.Glob(templatesDir + "/layouts/*.tmpl")
+	if err != nil {
+		panic(err.Error())
+	}
+
+	includes, err := filepath.Glob(templatesDir + "/includes/*.tmpl")
+	if err != nil {
+		panic(err.Error())
+	}
+
+	// Generate our templates map from our layouts/ and includes/ directories
+	for _, include := range includes {
+		layoutCopy := make([]string, len(layouts))
+		copy(layoutCopy, layouts)
+		files := append(layoutCopy, include)
+		r.AddFromFiles(filepath.Base(include), files...)
+	}
+	return r
 }
 
 func setupRoutes(r *gin.Engine, cache_store persistence.CacheStore) {
@@ -193,6 +219,14 @@ func playlistHandler(cache_store persistence.CacheStore) func(c *gin.Context) {
 			c.AbortWithError(http.StatusInternalServerError, err)
 		}
 
+		// Get playlist
+		playlist, err := client.GetPlaylist(c.Request.Context(), spotify.ID(playlistID))
+		if err != nil {
+			c.AbortWithError(http.StatusInternalServerError, err)
+			return
+		}
+
+		// Get playlist tracks
 		tracksPage, err := client.GetPlaylistItems(c.Request.Context(), spotify.ID(playlistID))
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
@@ -211,7 +245,8 @@ func playlistHandler(cache_store persistence.CacheStore) func(c *gin.Context) {
 
 		if strings.ToLower(c.Param("format")) == ".json" {
 			c.JSON(http.StatusOK, gin.H{
-				"tracks": tracks,
+				"tracks":   tracks,
+				"playlist": playlist,
 			})
 			return
 		}
@@ -250,9 +285,7 @@ func authRedirectHandler(cache_store persistence.CacheStore) func(c *gin.Context
 		// TODO: Generate a GUID here and use it for state ("test"), then store it in the session
 		token, err := auth.Token(c.Request.Context(), "test", c.Request)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error": err,
-			})
+			c.AbortWithError(http.StatusInternalServerError, err)
 			return
 		}
 

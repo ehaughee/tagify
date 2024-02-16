@@ -1,0 +1,27 @@
+{{ template "base" .}}
+
+{{ define "title"}}Playlists{{ end }}
+{{ define "content" }}
+<table>
+  <thead>
+    <tr>
+      <td>
+        Name
+      </td>
+      <td>
+        Link
+      </td>
+    </tr>
+  </thead>
+  <tbody>
+    {{ range .playlists }}
+      <tr>
+        <td>
+          <a href="/playlists/{{ .ID }}">{{ .Name }}</a>
+        </td>
+        <td>{{ .ExternalURLs.spotify }}</td>
+      </tr>
+    {{end}}
+  </tbody>
+</table>
+{{ end }}
