@@ -116,13 +116,22 @@ func loadTemplates(templatesDir string) multitemplate.Renderer {
 }
 
 func setupRoutes(r *gin.Engine, cache_store persistence.CacheStore) {
+	// Root
 	r.GET("/", rootHandler(cache_store))
-	r.GET("/home:format", homeHandler(cache_store))
-	r.GET("/home", homeHandler(cache_store))
-	r.GET("/playlists", playlistsHandler(cache_store))
-	r.GET("/playlists:format", playlistsHandler(cache_store))
-	// TODO: Figure out a better way to do .json because :id:format doesn't work
+
+	// Home
+	r.GET("/home", homeHandler(cache_store, false))
+	r.GET("/api/home", homeHandler(cache_store, true))
+
+	// Playlists
+	r.GET("/playlists", playlistsHandler(cache_store, false))
+	r.GET("/api/playlists", playlistsHandler(cache_store, true))
+
+	// Playlist
 	r.GET("/playlists/:id", playlistHandler(cache_store))
+	r.GET("/api/playlists/:id", playlistHandler(cache_store))
+
+	// Authentication
 	r.GET("/auth_redir", authRedirectHandler(cache_store))
 	r.GET("/login", loginHandler(cache_store))
 	r.GET("/logout", logoutHandler(cache_store))
@@ -136,7 +145,7 @@ func rootHandler(cache_store persistence.CacheStore) func(c *gin.Context) {
 	}
 }
 
-func homeHandler(cache_store persistence.CacheStore) func(c *gin.Context) {
+func homeHandler(cache_store persistence.CacheStore, json bool) func(c *gin.Context) {
 	return cache.CachePage(cache_store, time.Minute*5, func(c *gin.Context) {
 		if !loggedIn(c) {
 			c.Redirect(http.StatusPermanentRedirect, "/login")
@@ -154,7 +163,7 @@ func homeHandler(cache_store persistence.CacheStore) func(c *gin.Context) {
 			return
 		}
 
-		if strings.ToLower(c.Param("format")) == ".json" {
+		if json {
 			c.JSON(http.StatusOK, gin.H{
 				"currentUser": currentUser,
 			})
@@ -168,7 +177,7 @@ func homeHandler(cache_store persistence.CacheStore) func(c *gin.Context) {
 	})
 }
 
-func playlistsHandler(cache_store persistence.CacheStore) func(c *gin.Context) {
+func playlistsHandler(cache_store persistence.CacheStore, json bool) func(c *gin.Context) {
 	return cache.CachePage(cache_store, time.Minute*5, func(c *gin.Context) {
 		// TODO: Add loggedIn? middleware
 		// TODO: Implement redirection back to original page if redirected to /login
@@ -201,7 +210,7 @@ func playlistsHandler(cache_store persistence.CacheStore) func(c *gin.Context) {
 			}
 		}
 
-		if strings.ToLower(c.Param("format")) == ".json" {
+		if json {
 			c.JSON(http.StatusOK, gin.H{
 				"playlists": playlists,
 			})
