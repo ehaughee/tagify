@@ -62,6 +62,9 @@ func main() {
 
 	r := gin.Default()
 
+	// Static files
+	r.StaticFile("/favicon.ico", "./static/favicon.ico")
+
 	// Load templates
 	r.HTMLRender = loadTemplates("./templates")
 
