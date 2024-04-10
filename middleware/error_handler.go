@@ -17,6 +17,8 @@ func ErrorHandler(c *gin.Context) {
 	}
 
 	if len(c.Errors) > 0 {
-		c.JSON(http.StatusInternalServerError, "")
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"errors": c.Errors.Errors(),
+		})
 	}
 }
