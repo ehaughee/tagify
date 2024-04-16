@@ -1,13 +1,12 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"tagify/auth"
 	"tagify/middleware"
 	"time"
 
@@ -20,27 +19,18 @@ import (
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	"github.com/zmb3/spotify/v2"
-	spotifyauth "github.com/zmb3/spotify/v2/auth"
-	"golang.org/x/oauth2"
+	sauth "github.com/zmb3/spotify/v2/auth"
 )
 
 const (
-	// TODO: Parameterize this
-	authRedirectURL = "http://localhost:8080/auth_redir"
-
 	SPOTIFY_ID_ENV     = "SPOTIFY_ID"
 	SPOTIFY_SECRET_ENV = "SPOTIFY_SECRET"
 
 	COOKIE_AUTH_KEY = "COOKIE_AUTH_KEY"
-
-	spotifyTokenSessionKey        = "spotify-token"
-	spotifySessionIDKey           = "spotify-session-id"
-	spotifyAccessTokenSessionKey  = "spotify-access-token"
-	spotifyRefreshTokenSessionKey = "spotify-refresh-token"
 )
 
 var (
-	auth *spotifyauth.Authenticator
+	spotifyAuthenticator *sauth.Authenticator
 )
 
 func main() {
@@ -53,12 +43,12 @@ func main() {
 	}
 
 	// Create new Spotify Authenticator.  This must be done after we've loaded the environment variables.
-	auth = spotifyauth.New(
-		spotifyauth.WithRedirectURL(authRedirectURL),
-		spotifyauth.WithScopes(
-			spotifyauth.ScopeUserReadPrivate,
-			spotifyauth.ScopePlaylistReadCollaborative,
-			spotifyauth.ScopeUserLibraryRead,
+	spotifyAuthenticator = sauth.New(
+		sauth.WithRedirectURL(auth.GetAuthRedirectURL()),
+		sauth.WithScopes(
+			sauth.ScopeUserReadPrivate,
+			sauth.ScopePlaylistReadCollaborative,
+			sauth.ScopeUserLibraryRead,
 		),
 	)
 
@@ -152,7 +142,7 @@ func rootHandler(_ persistence.CacheStore) func(c *gin.Context) {
 
 func homeHandler(cacheStore persistence.CacheStore, json bool) func(c *gin.Context) {
 	return cache.CachePage(cacheStore, time.Minute*5, func(c *gin.Context) {
-		if !needsAuth(c) {
+		if !auth.NeedsAuth(c) {
 			c.Redirect(http.StatusTemporaryRedirect, "/login")
 		}
 
@@ -186,17 +176,17 @@ func playlistsHandler(cacheStore persistence.CacheStore, json bool) func(c *gin.
 	return cache.CachePage(cacheStore, time.Minute*5, func(c *gin.Context) {
 		// TODO: Add loggedIn? middleware
 		// TODO: Implement redirection back to original page if redirected to /login
-		if !needsAuth(c) {
+		if !auth.NeedsAuth(c) {
 			c.Redirect(http.StatusTemporaryRedirect, "/login")
 		}
 
-		token, err := getSpotifyToken(c)
+		token, err := auth.GetSpotifyToken(c)
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return
 		}
 
-		httpClient := auth.Client(c, token)
+		httpClient := spotifyAuthenticator.Client(c, token)
 		client := spotify.New(httpClient)
 
 		playlistsPage, err := client.CurrentUsersPlaylists(c.Request.Context(), spotify.Limit(50))
@@ -232,7 +222,7 @@ func playlistHandler(cacheStore persistence.CacheStore) func(c *gin.Context) {
 	return cache.CachePage(cacheStore, time.Minute*5, func(c *gin.Context) {
 		// TODO: Add loggedIn? middleware
 		// TODO: Implement redirection back to original page if redirected to /login
-		if !needsAuth(c) {
+		if !auth.NeedsAuth(c) {
 			c.Redirect(http.StatusTemporaryRedirect, "/login")
 		}
 
@@ -293,9 +283,9 @@ func playlistHandler(cacheStore persistence.CacheStore) func(c *gin.Context) {
 func loginHandler(_ persistence.CacheStore) func(c *gin.Context) {
 	return func(c *gin.Context) {
 		// Check if we already have a token, meaning we're already logged in
-		if !needsAuth(c) {
+		if !auth.NeedsAuth(c) {
 			sessionID := uuid.New().String()
-			c.Redirect(http.StatusTemporaryRedirect, auth.AuthURL(sessionID))
+			c.Redirect(http.StatusTemporaryRedirect, spotifyAuthenticator.AuthURL(sessionID))
 		}
 
 		c.Redirect(http.StatusTemporaryRedirect, "/home")
@@ -304,8 +294,8 @@ func loginHandler(_ persistence.CacheStore) func(c *gin.Context) {
 
 func logoutHandler(_ persistence.CacheStore) func(c *gin.Context) {
 	return func(c *gin.Context) {
-		if loggedIn(c) {
-			logOut(c)
+		if auth.LoggedIn(c) {
+			auth.LogOut(c)
 		}
 
 		c.Redirect(http.StatusTemporaryRedirect, "/")
@@ -315,96 +305,23 @@ func logoutHandler(_ persistence.CacheStore) func(c *gin.Context) {
 func authRedirectHandler(_ persistence.CacheStore) func(c *gin.Context) {
 	return func(c *gin.Context) {
 		sessionID := c.Query("state")
-		token, err := auth.Token(c.Request.Context(), sessionID, c.Request)
+		token, err := spotifyAuthenticator.Token(c.Request.Context(), sessionID, c.Request)
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return
 		}
 
-		storeSpotifyToken(token, sessionID, c)
+		auth.StoreSpotifyToken(token, sessionID, c)
 		c.Redirect(http.StatusTemporaryRedirect, "/home")
 	}
 }
 
-func needsAuth(c *gin.Context) bool {
-	return loggedIn(c) && !spotifyTokenNearExpiry(c)
-}
-
-func loggedIn(c *gin.Context) bool {
-	token, err := getSpotifyToken(c)
-	return err == nil && token != nil
-}
-
-func spotifyTokenNearExpiry(c *gin.Context) bool {
-	token, err := getSpotifyToken(c)
-	// Return true if the token will NOT be valid for at least another 5 minutes
-	return err == nil && !token.Expiry.After(time.Now().Add(5*time.Minute))
-}
-
-func getSpotifyToken(c *gin.Context) (*oauth2.Token, error) {
-	sessionVal := sessions.Default(c).Get(spotifyTokenSessionKey)
-	if sessionVal == nil {
-		return nil, fmt.Errorf("failed to find Spotify token under session key %q", spotifyTokenSessionKey)
-	}
-
-	if serializedToken, ok := sessionVal.(string); !ok {
-		return nil, fmt.Errorf("failed to find Spotify token with type %T, found %T", "", sessionVal)
-	} else if token, err := deserializeToken([]byte(serializedToken)); err != nil {
-		return nil, fmt.Errorf("failed to deserialize Spotify token with error: %w", err)
-	} else {
-		return token, nil
-	}
-
-}
-
-func storeSpotifyToken(token *oauth2.Token, sessionID string, c *gin.Context) error {
-	session := sessions.Default(c)
-	if tokenBytes, err := serializeToken(token); err != nil {
-		return fmt.Errorf("failed to serialize Spotify token with error: %w", err)
-	} else {
-		session.Set(spotifyTokenSessionKey, string(tokenBytes))
-		session.Set(spotifySessionIDKey, sessionID)
-	}
-
-	session.Options(sessions.Options{
-		// Invalidate session at token expiry time
-		// TODO: Figure out why this is very wrong
-		MaxAge: int(time.Until(token.Expiry).Seconds()),
-	})
-	session.Save()
-	return nil
-}
-
-func serializeToken(token *oauth2.Token) ([]byte, error) {
-	return json.Marshal(token)
-}
-
-func deserializeToken(tokenBytes []byte) (*oauth2.Token, error) {
-	token := &oauth2.Token{}
-	if err := json.Unmarshal(tokenBytes, token); err != nil {
-		return nil, err
-	}
-	return token, nil
-}
-
-func logOut(c *gin.Context) {
-	session := sessions.Default(c)
-	session.Clear()
-
-	// Invalidate the session
-	session.Options(sessions.Options{
-		MaxAge: -1,
-	})
-
-	session.Save()
-}
-
 func getClient(c *gin.Context) (*spotify.Client, error) {
-	token, err := getSpotifyToken(c)
+	token, err := auth.GetSpotifyToken(c)
 	if err != nil {
 		return nil, err
 	}
 
-	httpClient := auth.Client(c, token)
+	httpClient := spotifyAuthenticator.Client(c, token)
 	return spotify.New(httpClient), nil
 }
