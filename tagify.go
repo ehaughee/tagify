@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -23,10 +25,7 @@ import (
 )
 
 const (
-	SPOTIFY_ID_ENV     = "SPOTIFY_ID"
-	SPOTIFY_SECRET_ENV = "SPOTIFY_SECRET"
-
-	COOKIE_AUTH_KEY = "COOKIE_AUTH_KEY"
+	CookieAuthKey = "COOKIE_AUTH_KEY"
 )
 
 var (
@@ -65,26 +64,29 @@ func main() {
 
 	// Setup session management
 	// TODO: Use a backend store such that the Spotify tokens are not in the cookie
-	cookieAuthKey := os.Getenv(COOKIE_AUTH_KEY)
+	cookieAuthKey := os.Getenv(CookieAuthKey)
 	if cookieAuthKey == "" {
-		log.Fatalf("Required environment variable %q was empty", COOKIE_AUTH_KEY)
+		log.Fatalf("Required environment variable %q was empty", CookieAuthKey)
 	}
-	session_store := cookie.NewStore([]byte(cookieAuthKey))
+	sessionStore := cookie.NewStore([]byte(cookieAuthKey))
 	// TODO: Figure out why these options seem to have no effect on the cookies actually written
-	session_store.Options(sessions.Options{
+	sessionStore.Options(sessions.Options{
 		// Set max session duration to 59 minutes as the Spotify tokens last 60 minutes
 		MaxAge:   int(time.Minute * 59),
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
 	})
-	r.Use(sessions.Sessions("tagify_user_session", session_store))
+	r.Use(sessions.Sessions("tagify_user_session", sessionStore))
 
 	// Setup error handling
 	r.Use(middleware.ErrorHandler)
 
 	setupRoutes(r, cacheStore)
 
-	r.Run()
+	err := r.Run()
+	if err != nil {
+		panic(fmt.Sprintf("failed to start Tagify with error: %v", err))
+	}
 }
 
 func loadTemplates(templatesDir string) multitemplate.Renderer {
@@ -198,7 +200,7 @@ func playlistsHandler(cacheStore persistence.CacheStore, json bool) func(c *gin.
 		var playlists []spotify.SimplePlaylist
 		for {
 			playlists = append(playlists, playlistsPage.Playlists...)
-			if err := client.NextPage(c.Request.Context(), playlistsPage); err == spotify.ErrNoMorePages {
+			if err := client.NextPage(c.Request.Context(), playlistsPage); errors.Is(err, spotify.ErrNoMorePages) {
 				break
 			} else if err != nil {
 				c.AbortWithError(http.StatusInternalServerError, err)
@@ -258,7 +260,7 @@ func playlistHandler(cacheStore persistence.CacheStore) func(c *gin.Context) {
 		var tracks []spotify.PlaylistItem
 		for {
 			tracks = append(tracks, tracksPage.Items...)
-			if err := client.NextPage(c.Request.Context(), tracksPage); err == spotify.ErrNoMorePages {
+			if err := client.NextPage(c.Request.Context(), tracksPage); errors.Is(err, spotify.ErrNoMorePages) {
 				break
 			} else if err != nil {
 				c.AbortWithError(http.StatusInternalServerError, err)
@@ -295,7 +297,9 @@ func loginHandler(_ persistence.CacheStore) func(c *gin.Context) {
 func logoutHandler(_ persistence.CacheStore) func(c *gin.Context) {
 	return func(c *gin.Context) {
 		if auth.LoggedIn(c) {
-			auth.LogOut(c)
+			if err := auth.LogOut(c); err != nil {
+				c.AbortWithError(http.StatusInternalServerError, err)
+			}
 		}
 
 		c.Redirect(http.StatusTemporaryRedirect, "/")
@@ -311,7 +315,10 @@ func authRedirectHandler(_ persistence.CacheStore) func(c *gin.Context) {
 			return
 		}
 
-		auth.StoreSpotifyToken(token, sessionID, c)
+		err = auth.StoreSpotifyToken(token, sessionID, c)
+		if err != nil {
+			c.AbortWithError(http.StatusInternalServerError, err)
+		}
 		c.Redirect(http.StatusTemporaryRedirect, "/home")
 	}
 }

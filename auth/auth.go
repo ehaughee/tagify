@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	AUTH_REDIRECT_URL_ENV = "TAGIFY_AUTH_REDIRECT_URL"
+	RedirectUrlEnv = "TAGIFY_AUTH_REDIRECT_URL"
 
 	spotifySessionIDKey           = "spotify-session-id"
 	spotifyTokenSessionKey        = "spotify-token"
@@ -21,7 +21,7 @@ const (
 )
 
 func GetAuthRedirectURL() string {
-	if redirectUrl := os.Getenv(AUTH_REDIRECT_URL_ENV); redirectUrl != "" {
+	if redirectUrl := os.Getenv(RedirectUrlEnv); redirectUrl != "" {
 		return redirectUrl
 	}
 
@@ -37,7 +37,7 @@ func LoggedIn(c *gin.Context) bool {
 	return err == nil && token != nil
 }
 
-func LogOut(c *gin.Context) {
+func LogOut(c *gin.Context) error {
 	session := sessions.Default(c)
 	session.Clear()
 
@@ -46,7 +46,7 @@ func LogOut(c *gin.Context) {
 		MaxAge: -1,
 	})
 
-	session.Save()
+	return session.Save()
 }
 
 func GetSpotifyToken(c *gin.Context) (*oauth2.Token, error) {
@@ -78,8 +78,7 @@ func StoreSpotifyToken(token *oauth2.Token, sessionID string, c *gin.Context) er
 		// TODO: Figure out why this is very wrong
 		MaxAge: int(time.Until(token.Expiry)),
 	})
-	session.Save()
-	return nil
+	return session.Save()
 }
 
 func SpotifyTokenNearExpiry(c *gin.Context) bool {
