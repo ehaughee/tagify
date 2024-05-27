@@ -51,6 +51,7 @@ func main() {
 		),
 	)
 
+	// Default With the Logger and Recovery middleware already attached
 	r := gin.Default()
 
 	// Static files
@@ -85,7 +86,7 @@ func main() {
 
 	err := r.Run()
 	if err != nil {
-		panic(fmt.Sprintf("failed to start Tagify with error: %v", err))
+		log.Fatal(fmt.Sprintf("failed to start Tagify with error: %v", err))
 	}
 }
 
