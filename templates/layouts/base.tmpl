@@ -2,9 +2,13 @@
 <html lang="en">
   <head>
     <title>Tagify - {{ template "title" . }} </title>
+    <link rel="stylesheet" href="/css/pico.green.min.css">
+    <link rel="stylesheet" href="/css/pico.colors.min.css">
   </head>
   <body>
-    {{ template "navbar" }}
-    {{ template "content" . }}
+    <main class="container">
+      {{ template "navbar" }}
+      {{ template "content" . }}
+    </main>
   </body>
 </html>

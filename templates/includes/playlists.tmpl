@@ -1,6 +1,6 @@
 {{ define "title"}}Playlists{{ end }}
 {{ define "content" }}
-<table>
+<table class="striped">
   <thead>
     <tr>
       <td>
@@ -17,7 +17,9 @@
         <td>
           <a href="/playlists/{{ .ID }}">{{ .Name }}</a>
         </td>
-        <td>{{ .ExternalURLs.spotify }}</td>
+        <td>
+          <a class="secondary" href="{{ .ExternalURLs.spotify }}">Open in Spotify</a>
+        </td>
       </tr>
     {{end}}
   </tbody>

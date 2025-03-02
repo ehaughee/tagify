@@ -56,6 +56,7 @@ func main() {
 
 	// Static files
 	r.StaticFile("/favicon.ico", "./static/favicon.ico")
+	r.Static("/css", "./static/css")
 
 	// Load templates
 	r.HTMLRender = loadTemplates("./templates")
