@@ -87,7 +87,7 @@ func main() {
 
 	err := r.Run()
 	if err != nil {
-		log.Fatal(fmt.Sprintf("failed to start Tagify with error: %v", err))
+		log.Fatalf(fmt.Sprintf("failed to start Tagify with error: %v", err))
 	}
 }
 
